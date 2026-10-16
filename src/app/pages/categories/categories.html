@@ -1,0 +1,509 @@
+<!-- ==========================================================================
+     ARTISAN POS - CONTENEDOR PRINCIPAL DE CATEGORÍAS Y PRODUCTOS
+     ========================================================================== -->
+<div class="pos-container">
+  
+  <!-- BARRA SUPERIOR / HEADER PROFESIONAL POS -->
+  <header class="pos-header">
+    <div class="brand-section">
+      <div class="brand-icon">🍔</div>
+      <div class="brand-info">
+        <h1>Artisan <span>POS</span></h1>
+        <p>Gestión Inteligente de Menú & Inventario</p>
+      </div>
+    </div>
+
+    <!-- MÉTRICAS EN TIEMPO REAL -->
+    <div class="metrics-bar">
+      <div class="metric-chip">
+        <span class="metric-icon">🏷️</span>
+        <div class="metric-text">
+          <span class="metric-label">Categorías</span>
+          <span class="metric-val">{{ totalCategoriesCount }}</span>
+        </div>
+      </div>
+
+      <div class="metric-chip">
+        <span class="metric-icon">📦</span>
+        <div class="metric-text">
+          <span class="metric-label">Productos</span>
+          <span class="metric-val">{{ totalProductsCount }}</span>
+        </div>
+      </div>
+
+      <div class="metric-chip" [class.warning-chip]="lowStockProductsCount > 0">
+        <span class="metric-icon">⚠️</span>
+        <div class="metric-text">
+          <span class="metric-label">Stock Bajo</span>
+          <span class="metric-val">{{ lowStockProductsCount }}</span>
+        </div>
+      </div>
+
+      <button type="button" class="btn-refresh" (click)="loadAllData()" title="Sincronizar con el Backend">
+        <span class="refresh-icon">🔄</span> Sincronizar
+      </button>
+    </div>
+  </header>
+
+  <!-- ========================================================================
+       SECCIÓN DE CATEGORÍAS (DISEÑO UI/UX SUPERIOR)
+       ======================================================================== -->
+  <section class="categories-section">
+    <div class="section-header">
+      <div class="section-title-group">
+        <h2>Categorías del Menú</h2>
+        <span class="section-subtitle">Selecciona una categoría para filtrar productos o administra sus detalles</span>
+      </div>
+
+      <button type="button" class="btn-primary" (click)="openCreateCategoryModal()">
+        <span class="btn-icon">＋</span> Nueva Categoría
+      </button>
+    </div>
+
+    <!-- ESTADO DE CARGA SKELETON PARA CATEGORÍAS -->
+    <div *ngIf="isLoadingCategories" class="categories-loading-grid">
+      <div class="category-skeleton" *ngFor="let s of [1, 2, 3, 4]"></div>
+    </div>
+
+    <!-- GRID DE TARJETAS DE CATEGORÍA ELEGANTE -->
+    <div *ngIf="!isLoadingCategories" class="categories-grid">
+      <!-- Tarjeta "Todas las Categorías" -->
+      <div 
+        class="category-card all-categories-card"
+        [class.active]="selectedCategoryId === null"
+        (click)="selectCategory(null)">
+        <div class="cat-icon-wrapper all-icon">🍽️</div>
+        <div class="cat-info">
+          <h3>Todas</h3>
+          <span class="cat-badge">{{ products.length }} items</span>
+        </div>
+        <div class="active-indicator" *ngIf="selectedCategoryId === null"></div>
+      </div>
+
+      <!-- Tarjetas de cada Categoría -->
+      <div 
+        class="category-card" 
+        *ngFor="let cat of categories"
+        [class.active]="selectedCategoryId === cat.id"
+        (click)="selectCategory(cat.id ?? null)">
+        
+        <div class="cat-icon-wrapper">{{ cat.icono || '🏷️' }}</div>
+        
+        <div class="cat-info">
+          <h3>{{ cat.nombre }}</h3>
+          <span class="cat-badge">{{ getProductCountForCategory(cat.id ?? 0) }} productos</span>
+        </div>
+
+        <!-- Acciones flotantes al pasar el cursor (Editar / Eliminar) -->
+        <div class="cat-actions" (click)="$event.stopPropagation()">
+          <button 
+            type="button" 
+            class="cat-action-btn edit" 
+            (click)="openEditCategoryModal(cat, $event)" 
+            title="Editar categoría">
+            ✏️
+          </button>
+          <button 
+            type="button" 
+            class="cat-action-btn delete" 
+            (click)="confirmDeleteCategory(cat, $event)" 
+            title="Eliminar categoría">
+            🗑️
+          </button>
+        </div>
+
+        <!-- Indicador de selección activa -->
+        <div class="active-indicator" *ngIf="selectedCategoryId === cat.id"></div>
+      </div>
+    </div>
+
+    <!-- Mensaje si no hay categorías creadas -->
+    <div *ngIf="!isLoadingCategories && categories.length === 0" class="empty-categories">
+      <div class="empty-icon">📂</div>
+      <h3>No hay categorías registradas</h3>
+      <p>Crea tu primera categoría para comenzar a organizar tu menú de comidas y bebidas.</p>
+      <button type="button" class="btn-primary" (click)="openCreateCategoryModal()">
+        Crear Categoría Ahora
+      </button>
+    </div>
+  </section>
+
+  <!-- ========================================================================
+       SECCIÓN DE GESTIÓN COMPLETA DE PRODUCTOS
+       ======================================================================== -->
+  <section class="products-section">
+    <div class="products-header">
+      <div class="products-title-group">
+        <h2>
+          Productos 
+          <span class="category-filter-tag">{{ getSelectedCategoryName() }}</span>
+        </h2>
+        <span class="products-counter">{{ filteredProducts.length }} productos encontrados</span>
+      </div>
+
+      <div class="products-controls">
+        <!-- BUSCADOR EN TIEMPO REAL -->
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input 
+            type="text" 
+            [(ngModel)]="searchTerm" 
+            placeholder="Buscar por nombre o descripción..." />
+          <button *ngIf="searchTerm" type="button" class="btn-clear" (click)="searchTerm = ''">✕</button>
+        </div>
+
+        <!-- FILTRO DE ESTADO DE STOCK -->
+        <div class="stock-filter-group">
+          <button 
+            type="button" 
+            class="filter-pill" 
+            [class.active]="stockFilter === 'all'" 
+            (click)="stockFilter = 'all'">
+            Todos
+          </button>
+          <button 
+            type="button" 
+            class="filter-pill" 
+            [class.active]="stockFilter === 'low'" 
+            (click)="stockFilter = 'low'">
+            Bajo Stock
+          </button>
+          <button 
+            type="button" 
+            class="filter-pill" 
+            [class.active]="stockFilter === 'out'" 
+            (click)="stockFilter = 'out'">
+            Agotados
+          </button>
+        </div>
+
+        <!-- BOTÓN NUEVO PRODUCTO -->
+        <button type="button" class="btn-success" (click)="openCreateProductModal()">
+          <span class="btn-icon">＋</span> Nuevo Producto
+        </button>
+      </div>
+    </div>
+
+    <!-- ESTADO DE CARGA SKELETON PARA PRODUCTOS -->
+    <div *ngIf="isLoadingProducts" class="products-loading-grid">
+      <div class="product-skeleton" *ngFor="let s of [1, 2, 3, 4, 5, 6]"></div>
+    </div>
+
+    <!-- GRID DE PRODUCTOS -->
+    <div *ngIf="!isLoadingProducts && filteredProducts.length > 0" class="products-grid">
+      <div 
+        class="product-card" 
+        *ngFor="let prod of filteredProducts"
+        [class.selected]="selectedProduct?.id === prod.id"
+        (click)="selectProduct(prod)">
+
+        <!-- Cabecera de la tarjeta del producto -->
+        <div class="prod-card-top">
+          <span class="prod-category-badge">{{ prod.categoria_nombre || 'General' }}</span>
+
+          <!-- Badge de Stock dinámico -->
+          <span 
+            *ngIf="prod.control_stock" 
+            class="stock-status-badge"
+            [ngClass]="{
+              'stock-out': prod.stock_actual === 0,
+              'stock-low': prod.stock_actual > 0 && prod.stock_actual <= 5,
+              'stock-ok': prod.stock_actual > 5
+            }">
+            <span class="status-dot"></span>
+            {{ prod.stock_actual === 0 ? 'Agotado' : (prod.stock_actual <= 5 ? 'Bajo (' + prod.stock_actual + ')' : prod.stock_actual + ' disp.') }}
+          </span>
+          <span *ngIf="!prod.control_stock" class="stock-status-badge stock-unlimited">
+            Ilimitado
+          </span>
+        </div>
+
+        <!-- Cuerpo del Producto -->
+        <div class="prod-card-body">
+          <h3 class="prod-title">{{ prod.nombre }}</h3>
+          <p class="prod-desc">{{ prod.descripcion || 'Sin descripción adicional para cocina/cliente.' }}</p>
+          
+          <div class="prod-pricing">
+            <span class="price-val">${{ prod.precio_venta | number:'1.0-0' }}</span>
+            <span *ngIf="prod.precio_costo && prod.precio_costo > 0" class="cost-hint">
+              Costo: ${{ prod.precio_costo | number:'1.0-0' }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Control Rápido de Stock (+ y - en vivo) -->
+        <div class="quick-stock-section" *ngIf="prod.control_stock" (click)="$event.stopPropagation()">
+          <span class="stock-label">Stock:</span>
+          <div class="stock-adjuster">
+            <button 
+              type="button" 
+              class="btn-stock-qty minus" 
+              [disabled]="prod.stock_actual <= 0"
+              (click)="adjustStock(prod, -1, $event)" 
+              title="Disminuir 1 unidad">
+              −
+            </button>
+            <span class="stock-qty-display">{{ prod.stock_actual }}</span>
+            <button 
+              type="button" 
+              class="btn-stock-qty plus" 
+              (click)="adjustStock(prod, 1, $event)" 
+              title="Aumentar 1 unidad">
+              +
+            </button>
+          </div>
+        </div>
+
+        <!-- Acciones del Producto: Editar y Eliminar -->
+        <div class="prod-card-footer" (click)="$event.stopPropagation()">
+          <button 
+            type="button" 
+            class="btn-prod-action edit" 
+            (click)="openEditProductModal(prod, $event)">
+            <span>✏️</span> Editar
+          </button>
+          <button 
+            type="button" 
+            class="btn-prod-action delete" 
+            (click)="confirmDeleteProduct(prod, $event)">
+            <span>🗑️</span> Eliminar
+          </button>
+        </div>
+
+        <!-- Indicador de selección activa del producto -->
+        <div class="selection-flag" *ngIf="selectedProduct?.id === prod.id">
+          <span>Seleccionado</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ESTADO VACÍO CUANDO NO HAY PRODUCTOS FILTRADOS -->
+    <div *ngIf="!isLoadingProducts && filteredProducts.length === 0" class="empty-products">
+      <div class="empty-icon">🍽️</div>
+      <h3>No se encontraron productos</h3>
+      <p *ngIf="searchTerm">No hay productos que coincidan con la búsqueda "{{ searchTerm }}".</p>
+      <p *ngIf="!searchTerm">Esta categoría aún no tiene productos registrados en la base de datos.</p>
+      <button type="button" class="btn-success" (click)="openCreateProductModal()">
+        ＋ Agregar Primer Producto
+      </button>
+    </div>
+  </section>
+
+  <!-- ========================================================================
+       MODAL: CREAR / EDITAR CATEGORÍA
+       ======================================================================== -->
+  <div class="modal-backdrop" *ngIf="showCategoryModal" (click)="closeCategoryModal()">
+    <div class="modal-card" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <span class="modal-title-icon">{{ editingCategory ? '✏️' : '🏷️' }}</span>
+          <h3>{{ editingCategory ? 'Editar Categoría' : 'Nueva Categoría' }}</h3>
+        </div>
+        <button type="button" class="btn-close-modal" (click)="closeCategoryModal()">✕</button>
+      </div>
+
+      <form [formGroup]="categoryForm" (ngSubmit)="saveCategory()">
+        <div class="modal-body">
+          <!-- Nombre de la categoría -->
+          <div class="form-group">
+            <label for="cat-nombre">Nombre de la Categoría *</label>
+            <input 
+              id="cat-nombre" 
+              type="text" 
+              formControlName="nombre" 
+              placeholder="Ej: Hamburguesas Especiales, Bebidas, etc." 
+              [class.has-error]="categoryForm.get('nombre')?.invalid && categoryForm.get('nombre')?.touched" />
+            <span class="error-text" *ngIf="categoryForm.get('nombre')?.invalid && categoryForm.get('nombre')?.touched">
+              El nombre es requerido (mínimo 2 letras).
+            </span>
+          </div>
+
+          <!-- Selector visual interactivo de Icono -->
+          <div class="form-group">
+            <label>Icono Representativo *</label>
+            <div class="icon-selector-grid">
+              <button 
+                type="button" 
+                class="icon-choice-btn" 
+                *ngFor="let ic of popularIcons"
+                [class.selected]="categoryForm.get('icono')?.value === ic"
+                (click)="selectIcon(ic)">
+                {{ ic }}
+              </button>
+            </div>
+            
+            <div class="custom-icon-row">
+              <span class="custom-icon-label">O escribe tu emoji/icono:</span>
+              <input 
+                type="text" 
+                class="input-custom-icon" 
+                formControlName="icono" 
+                placeholder="🍔" 
+                maxlength="50" />
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" (click)="closeCategoryModal()" [disabled]="isSubmittingCategory">
+            Cancelar
+          </button>
+          <button type="submit" class="btn-primary" [disabled]="isSubmittingCategory">
+            {{ isSubmittingCategory ? 'Guardando...' : (editingCategory ? 'Guardar Cambios' : 'Crear Categoría') }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL: CREAR / EDITAR PRODUCTO
+       ======================================================================== -->
+  <div class="modal-backdrop" *ngIf="showProductModal" (click)="closeProductModal()">
+    <div class="modal-card modal-lg" (click)="$event.stopPropagation()">
+      <div class="modal-header">
+        <div class="modal-title-wrap">
+          <span class="modal-title-icon">{{ editingProduct ? '✏️' : '🍔' }}</span>
+          <h3>{{ editingProduct ? 'Editar Producto' : 'Crear Nuevo Producto' }}</h3>
+        </div>
+        <button type="button" class="btn-close-modal" (click)="closeProductModal()">✕</button>
+      </div>
+
+      <form [formGroup]="productForm" (ngSubmit)="saveProduct()">
+        <div class="modal-body">
+          <div class="form-row">
+            <!-- Nombre -->
+            <div class="form-group flex-2">
+              <label for="prod-nombre">Nombre del Producto *</label>
+              <input 
+                id="prod-nombre" 
+                type="text" 
+                formControlName="nombre" 
+                placeholder="Ej: Hamburguesa Artisan Doble Queso" 
+                [class.has-error]="productForm.get('nombre')?.invalid && productForm.get('nombre')?.touched" />
+              <span class="error-text" *ngIf="productForm.get('nombre')?.invalid && productForm.get('nombre')?.touched">
+                El nombre es obligatorio (mínimo 2 letras).
+              </span>
+            </div>
+
+            <!-- Categoría -->
+            <div class="form-group flex-1">
+              <label for="prod-cat">Categoría *</label>
+              <select id="prod-cat" formControlName="categoria_id">
+                <option [ngValue]="null" disabled>Seleccionar Categoría</option>
+                <option *ngFor="let cat of categories" [value]="cat.id">
+                  {{ cat.icono || '🏷️' }} {{ cat.nombre }}
+                </option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Descripción -->
+          <div class="form-group">
+            <label for="prod-desc">Descripción (ingredientes, porciones, instrucciones)</label>
+            <textarea 
+              id="prod-desc" 
+              rows="2" 
+              formControlName="descripcion" 
+              placeholder="Ej: Pan brioche artesanal, 180g carne de res, queso cheddar, cebolla caramelizada...">
+            </textarea>
+          </div>
+
+          <div class="form-row">
+            <!-- Precio de Venta -->
+            <div class="form-group">
+              <label for="prod-precio">Precio de Venta ($) *</label>
+              <input 
+                id="prod-precio" 
+                type="number" 
+                min="0" 
+                step="100" 
+                formControlName="precio_venta" 
+                [class.has-error]="productForm.get('precio_venta')?.invalid && productForm.get('precio_venta')?.touched" />
+              <span class="error-text" *ngIf="productForm.get('precio_venta')?.invalid && productForm.get('precio_venta')?.touched">
+                El precio debe ser un número mayor o igual a 0.
+              </span>
+            </div>
+
+            <!-- Precio de Costo -->
+            <div class="form-group">
+              <label for="prod-costo">Costo de Producción ($)</label>
+              <input 
+                id="prod-costo" 
+                type="number" 
+                min="0" 
+                step="100" 
+                formControlName="precio_costo" />
+            </div>
+
+            <!-- Stock Actual -->
+            <div class="form-group">
+              <label for="prod-stock">Stock Inicial (unidades)</label>
+              <input 
+                id="prod-stock" 
+                type="number" 
+                min="0" 
+                formControlName="stock_actual" />
+            </div>
+          </div>
+
+          <!-- Control de inventario toggle -->
+          <div class="checkbox-group">
+            <label class="switch-container">
+              <input type="checkbox" formControlName="control_stock" />
+              <span class="slider"></span>
+            </label>
+            <div class="checkbox-label-text">
+              <strong>Controlar inventario para este producto</strong>
+              <span>Descuenta automáticamente del stock al generar órdenes de venta en caja.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn-secondary" (click)="closeProductModal()" [disabled]="isSubmittingProduct">
+            Cancelar
+          </button>
+          <button type="submit" class="btn-success" [disabled]="isSubmittingProduct">
+            {{ isSubmittingProduct ? 'Guardando...' : (editingProduct ? 'Guardar Cambios' : 'Registrar Producto') }}
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL DE CONFIRMACIÓN DE ELIMINACIÓN
+       ======================================================================== -->
+  <div class="modal-backdrop" *ngIf="showConfirmDeleteModal" (click)="closeDeleteModal()">
+    <div class="modal-card modal-confirm" (click)="$event.stopPropagation()">
+      <div class="confirm-icon-wrap">⚠️</div>
+      <h3>¿Eliminar {{ deleteType === 'category' ? 'Categoría' : 'Producto' }}?</h3>
+      <p>
+        Estás a punto de eliminar permanentemente 
+        <strong>"{{ pendingDeleteTarget?.nombre }}"</strong>. Esta acción no se puede deshacer.
+      </p>
+
+      <div class="confirm-actions">
+        <button type="button" class="btn-secondary" (click)="closeDeleteModal()">
+          Cancelar
+        </button>
+        <button type="button" class="btn-danger" (click)="executeDelete()">
+          Sí, Eliminar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       TOAST FLOTANTE DE NOTIFICACIONES
+       ======================================================================== -->
+  <div class="toast-notification" *ngIf="toast" [ngClass]="toast.type">
+    <span class="toast-icon">
+      {{ toast.type === 'success' ? '✅' : (toast.type === 'error' ? '❌' : 'ℹ️') }}
+    </span>
+    <span class="toast-msg">{{ toast.message }}</span>
+    <button type="button" class="toast-close" (click)="toast = null">✕</button>
+  </div>
+
+</div>
