@@ -1,0 +1,206 @@
+<div class="pos-container">
+  <!-- BARRA SUPERIOR DE ADMINISTRACIÓN -->
+  <header class="pos-header">
+    <div class="brand-section">
+      <div class="brand-icon">🍔</div>
+      <div class="brand-info">
+        <h1>Artisan <span>Admin</span></h1>
+        <p>Gestión de Mesas del Salón & Estados de Orden</p>
+      </div>
+    </div>
+
+    <!-- NAVEGACIÓN UNIFICADA -->
+    <nav class="admin-nav">
+      <a routerLink="/admin/catalog" routerLinkActive="active" class="nav-tab">
+        <span>🏷️</span> Catálogo
+      </a>
+      <a routerLink="/admin/tables" routerLinkActive="active" class="nav-tab">
+        <span>🍽️</span> Mesas
+      </a>
+      <a routerLink="/admin/cashiers" routerLinkActive="active" class="nav-tab">
+        <span>🧑‍💼</span> Cajeros
+      </a>
+      <a routerLink="/admin/dashboard" routerLinkActive="active" class="nav-tab">
+        <span>📊</span> Resumen & Cierres
+      </a>
+      <a routerLink="/pos/terminal" class="nav-tab terminal-shortcut">
+        <span>🛒</span> Ir a Caja POS
+      </a>
+    </nav>
+
+    <!-- ACCIONES Y BYPASS -->
+    <div class="header-actions">
+      <button
+        type="button"
+        class="btn-bypass"
+        [class.bypass-on]="authService.bypassPermissionsSignal()"
+        (click)="toggleBypass()"
+        title="Saltarse temporalmente restricciones de rol para pruebas">
+        {{ authService.bypassPermissionsSignal() ? '🔓 Bypass Permisos: ON' : '🔒 Bypass Permisos: OFF' }}
+      </button>
+
+      <button type="button" class="btn-logout" (click)="logout()">
+        🚪 Cambiar Operador
+      </button>
+    </div>
+  </header>
+
+  <!-- CONTENIDO DE GESTIÓN DE MESAS -->
+  <section class="tables-section">
+    <div class="section-header">
+      <div>
+        <h2>Mapa y Registro de Mesas</h2>
+        <p>Crea nuevas mesas para el restaurante y supervisa su estado estricto: <strong>ABIERTA</strong> (con orden activa) o <strong>CERRADA</strong> (disponible para nueva orden).</p>
+      </div>
+
+      <div class="controls-bar">
+        <div class="filter-pills">
+          <button
+            type="button"
+            class="pill"
+            [class.active]="stateFilter === 'all'"
+            (click)="stateFilter = 'all'">
+            Todas ({{ tables.length }})
+          </button>
+          <button
+            type="button"
+            class="pill open-pill"
+            [class.active]="stateFilter === 'abierta'"
+            (click)="stateFilter = 'abierta'">
+            🟢 Abiertas ({{ openTablesCount }})
+          </button>
+          <button
+            type="button"
+            class="pill closed-pill"
+            [class.active]="stateFilter === 'cerrada'"
+            (click)="stateFilter = 'cerrada'">
+            ⚪ Cerradas ({{ closedTablesCount }})
+          </button>
+        </div>
+
+        <button type="button" class="btn-primary" (click)="openCreateModal()">
+          <span>＋</span> Crear Nueva Mesa
+        </button>
+      </div>
+    </div>
+
+    <!-- GRID DE TARJETAS DE MESAS -->
+    <div class="tables-grid" *ngIf="!isLoading && filteredTables.length > 0">
+      <div
+        class="table-card"
+        *ngFor="let t of filteredTables"
+        [class.state-abierta]="t.estado === 'abierta'"
+        [class.state-cerrada]="t.estado === 'cerrada'">
+
+        <div class="card-top">
+          <span class="table-id-badge">ID #{{ t.id }}</span>
+          <span class="state-badge" [ngClass]="t.estado === 'abierta' ? 'badge-open' : 'badge-closed'">
+            <span class="dot"></span>
+            {{ t.estado === 'abierta' ? 'ABIERTA' : 'CERRADA' }}
+          </span>
+        </div>
+
+        <div class="card-center">
+          <div class="table-icon-box">
+            {{ t.estado === 'abierta' ? '🍽️' : '🪑' }}
+          </div>
+          <div class="table-details">
+            <h3>Mesa {{ t.numero }}</h3>
+            <span class="capacity-tag">👥 Capacidad: {{ t.capacidad }} personas</span>
+          </div>
+        </div>
+
+        <div class="order-link-info">
+          <span *ngIf="t.estado === 'abierta' && t.orden_activa_id" class="active-order-chip">
+            🧾 Orden Activa #{{ t.orden_activa_id }} en curso
+          </span>
+          <span *ngIf="t.estado === 'abierta' && !t.orden_activa_id" class="active-order-chip">
+            🟢 Mesa abierta para atención
+          </span>
+          <span *ngIf="t.estado === 'cerrada'" class="closed-order-chip">
+            ⚪ Sin orden activa • Lista para asignar en caja
+          </span>
+        </div>
+
+        <div class="card-footer">
+          <button
+            type="button"
+            class="btn-state-toggle"
+            [ngClass]="t.estado === 'abierta' ? 'to-close' : 'to-open'"
+            (click)="toggleTableState(t)">
+            {{ t.estado === 'abierta' ? '🔒 Cambiar a CERRADA (Liberar)' : '🟢 Cambiar a ABIERTA' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ESTADO VACÍO -->
+    <div class="empty-state" *ngIf="!isLoading && filteredTables.length === 0">
+      <div class="empty-icon">🪑</div>
+      <h3>No hay mesas registradas en este filtro</h3>
+      <p>Registra las mesas físicas del local (ej: M1, M2, Terraza 1) para que el cajero pueda asignarlas al crear órdenes.</p>
+      <button type="button" class="btn-primary" (click)="openCreateModal()">
+        ＋ Registrar Primera Mesa
+      </button>
+    </div>
+
+    <!-- MODAL CREAR NUEVA MESA -->
+    <div class="modal-backdrop" *ngIf="showCreateModal" (click)="closeCreateModal()">
+      <div class="modal-card" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h3>🍽️ Registrar Nueva Mesa</h3>
+          <button type="button" class="btn-close" (click)="closeCreateModal()">✕</button>
+        </div>
+
+        <form [formGroup]="tableForm" (ngSubmit)="createTable()">
+          <div class="modal-body">
+            <div class="form-group">
+              <label>Número o Identificador de la Mesa *</label>
+              <input
+                type="text"
+                formControlName="numero"
+                placeholder="Ej: M1, M2, VIP-1, Terraza-3" />
+              <span class="hint">Debe ser único en el restaurante.</span>
+            </div>
+
+            <div class="form-group">
+              <label>Capacidad de Comensales *</label>
+              <input type="number" formControlName="capacidad" min="1" max="30" />
+              <div class="presets-row">
+                <button
+                  type="button"
+                  *ngFor="let c of capacityPresets"
+                  class="preset-chip"
+                  [class.active]="tableForm.get('capacidad')?.value === c"
+                  (click)="setCapacityPreset(c)">
+                  👥 {{ c }} pers.
+                </button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Estado Inicial de la Mesa *</label>
+              <select formControlName="estado">
+                <option value="cerrada">⚪ CERRADA (Sin orden activa / Disponible para asignar)</option>
+                <option value="abierta">🟢 ABIERTA (En actividad)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn-secondary" (click)="closeCreateModal()">Cancelar</button>
+            <button type="submit" class="btn-primary" [disabled]="isSubmitting">
+              {{ isSubmitting ? 'Registrando...' : 'Guardar Mesa' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- TOAST -->
+    <div class="toast-notification" *ngIf="toast" [ngClass]="toast.type">
+      <span>{{ toast.type === 'success' ? '✅' : (toast.type === 'error' ? '❌' : 'ℹ️') }}</span>
+      <span>{{ toast.message }}</span>
+    </div>
+  </section>
+</div>

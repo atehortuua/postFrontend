@@ -1,14 +1,16 @@
 import { CommonModule } from '@angular/common';
 import { ChangeDetectorRef, Component, OnInit } from '@angular/core';
 import { FormBuilder, FormGroup, FormsModule, ReactiveFormsModule, Validators } from '@angular/forms';
+import { Router, RouterModule } from '@angular/router';
 import { CategoryService } from '../../services/category';
 import { ProductService } from '../../services/product';
+import { AuthService } from '../../services/auth';
 import { Category } from './category.model';
 import { Product } from '../../models/product.model';
 
 @Component({
   standalone: true,
-  imports: [CommonModule, ReactiveFormsModule, FormsModule],
+  imports: [CommonModule, ReactiveFormsModule, FormsModule, RouterModule],
   selector: 'app-categories',
   styleUrl: './categories.scss',
   templateUrl: './categories.html',
@@ -56,6 +58,8 @@ export class CategoriesComponent implements OnInit {
     private fb: FormBuilder,
     private categoryService: CategoryService,
     private productService: ProductService,
+    public authService: AuthService,
+    private router: Router,
     private cdr: ChangeDetectorRef
   ) {
     // Inicialización del formulario reactivo de categorías
@@ -84,6 +88,11 @@ export class CategoriesComponent implements OnInit {
   loadAllData(): void {
     this.loadCategories();
     this.loadProducts();
+  }
+
+  logout(): void {
+    this.authService.logout();
+    this.router.navigate(['/start-day']);
   }
 
   // ==========================================

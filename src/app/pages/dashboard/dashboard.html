@@ -1,0 +1,182 @@
+<div class="pos-container">
+  <!-- BARRA SUPERIOR DE ADMINISTRACIÓN -->
+  <header class="pos-header">
+    <div class="brand-section">
+      <div class="brand-icon">🍔</div>
+      <div class="brand-info">
+        <h1>Artisan <span>Admin</span></h1>
+        <p>Resumen Ejecutivo de Ventas, Mesas & Auditoría</p>
+      </div>
+    </div>
+
+    <nav class="admin-nav">
+      <a routerLink="/admin/catalog" routerLinkActive="active" class="nav-tab">
+        <span>🏷️</span> Catálogo
+      </a>
+      <a routerLink="/admin/tables" routerLinkActive="active" class="nav-tab">
+        <span>🍽️</span> Mesas
+      </a>
+      <a routerLink="/admin/cashiers" routerLinkActive="active" class="nav-tab">
+        <span>🧑‍💼</span> Cajeros
+      </a>
+      <a routerLink="/admin/dashboard" routerLinkActive="active" class="nav-tab">
+        <span>📊</span> Resumen & Cierres
+      </a>
+      <a routerLink="/pos/terminal" class="nav-tab terminal-shortcut">
+        <span>🛒</span> Ir a Caja POS
+      </a>
+    </nav>
+
+    <div class="header-actions">
+      <button
+        type="button"
+        class="btn-bypass"
+        [class.bypass-on]="authService.bypassPermissionsSignal()"
+        (click)="toggleBypass()">
+        {{ authService.bypassPermissionsSignal() ? '🔓 Bypass Permisos: ON' : '🔒 Bypass Permisos: OFF' }}
+      </button>
+
+      <button type="button" class="btn-logout" (click)="logout()">
+        🚪 Cambiar Operador
+      </button>
+    </div>
+  </header>
+
+  <section class="dashboard-section">
+    <div class="kpi-grid">
+      <div class="kpi-card highlight">
+        <span class="kpi-icon">💰</span>
+        <div>
+          <span class="kpi-label">Ventas Totales de Hoy ({{ summary.fecha }})</span>
+          <h3 class="kpi-value">${{ (summary.total_ventas || 0) | number:'1.0-0' }}</h3>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <span class="kpi-icon">🧾</span>
+        <div>
+          <span class="kpi-label">Órdenes Pagadas Hoy</span>
+          <h3 class="kpi-value">{{ summary.total_ordenes || 0 }}</h3>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <span class="kpi-icon">🟢</span>
+        <div>
+          <span class="kpi-label">Mesas Abiertas Activas</span>
+          <h3 class="kpi-value">{{ openTablesCount }}</h3>
+        </div>
+      </div>
+
+      <div class="kpi-card">
+        <span class="kpi-icon">⚪</span>
+        <div>
+          <span class="kpi-label">Mesas Cerradas Disponibles</span>
+          <h3 class="kpi-value">{{ closedTablesCount }}</h3>
+        </div>
+      </div>
+    </div>
+
+    <div class="panels-grid">
+      <!-- TOP PRODUCTOS -->
+      <div class="panel-card">
+        <h3>🏆 Top 5 Productos Más Vendidos Hoy</h3>
+        <div class="list-rows" *ngIf="summary.top_productos?.length > 0; else noTop">
+          <div class="row-item" *ngFor="let prod of summary.top_productos; let idx = index">
+            <span class="rank">#{{ idx + 1 }}</span>
+            <span class="name">{{ prod.nombre }}</span>
+            <span class="qty">{{ prod.cantidad_vendida }} uds.</span>
+          </div>
+        </div>
+        <ng-template #noTop>
+          <p class="empty-msg">Aún no se han registrado ventas pagadas en la fecha de hoy.</p>
+        </ng-template>
+      </div>
+
+      <!-- VENTAS POR MÉTODO -->
+      <div class="panel-card">
+        <h3>💳 Desglose por Método de Pago</h3>
+        <div class="list-rows" *ngIf="summary.ventas_por_metodo?.length > 0; else noMethods">
+          <div class="row-item" *ngFor="let m of summary.ventas_por_metodo">
+            <span class="name">{{ m.metodo | uppercase }}</span>
+            <span class="qty">${{ m.total | number:'1.0-0' }}</span>
+          </div>
+        </div>
+        <ng-template #noMethods>
+          <p class="empty-msg">Sin cobros registrados hoy.</p>
+        </ng-template>
+      </div>
+    </div>
+
+    <!-- PASO 4: HISTORIAL Y AUDITORÍA DE CIERRES DE CAJA (CIERRES Z) -->
+    <div class="closures-card">
+      <div class="closures-header">
+        <div>
+          <h3>🔒 Historial de Cierres de Caja (Cierres Z)</h3>
+          <p>Auditoría de turnos cerrados, montos esperados vs. contados y diferencias de arqueo</p>
+        </div>
+
+        <div class="date-filters">
+          <div class="filter-field">
+            <label>Desde</label>
+            <input type="date" [(ngModel)]="fechaInicio" />
+          </div>
+          <div class="filter-field">
+            <label>Hasta</label>
+            <input type="date" [(ngModel)]="fechaFin" />
+          </div>
+          <button type="button" class="btn-filter" (click)="filterClosures()">
+            🔍 Filtrar
+          </button>
+          <button type="button" class="btn-clear" *ngIf="fechaInicio || fechaFin" (click)="clearDateFilter()">
+            Limpiar
+          </button>
+        </div>
+      </div>
+
+      <div class="closures-table-wrapper" *ngIf="cashClosures.length > 0; else noClosures">
+        <table class="closures-table">
+          <thead>
+            <tr>
+              <th>Turno</th>
+              <th>Fecha Apertura / Cierre</th>
+              <th>Fondo Inicial</th>
+              <th>Ventas Turno</th>
+              <th>Efectivo Contado</th>
+              <th>Diferencia (Arqueo)</th>
+              <th>Fondo Mañana</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let c of cashClosures">
+              <td><span class="shift-badge">#{{ c.turno_id || c.id }}</span></td>
+              <td>
+                <div class="date-cell">
+                  <span>🟢 {{ c.fecha_apertura || c.fecha || '—' }}</span>
+                  <small *ngIf="c.fecha_cierre">🔴 {{ c.fecha_cierre }}</small>
+                </div>
+              </td>
+              <td>${{ (c.monto_inicial || 0) | number:'1.0-0' }}</td>
+              <td class="bold-cell">${{ (c.total_ventas || (c.total_ventas_efectivo + c.total_ventas_otros) || 0) | number:'1.0-0' }}</td>
+              <td class="bold-cell">${{ (c.monto_real_contado || c.monto_final_real || 0) | number:'1.0-0' }}</td>
+              <td>
+                <span
+                  class="diff-pill"
+                  [class.exact]="(c.diferencia || 0) === 0"
+                  [class.surplus]="(c.diferencia || 0) > 0"
+                  [class.shortage]="(c.diferencia || 0) < 0">
+                  {{ (c.diferencia || 0) === 0 ? '✓ Cuadre Exacto ($0)' : ((c.diferencia > 0 ? '+$' : '-$') + (absVal(c.diferencia) | number:'1.0-0')) }}
+                </span>
+              </td>
+              <td>${{ (c.fondo_manana || 0) | number:'1.0-0' }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <ng-template #noClosures>
+        <p class="empty-msg">No se encontraron cierres de caja registrados para el rango seleccionado.</p>
+      </ng-template>
+    </div>
+  </section>
+</div>

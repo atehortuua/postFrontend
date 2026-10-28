@@ -1,0 +1,196 @@
+<div class="start-day-wrapper">
+  <!-- FONDO DECORATIVO SUTIL -->
+  <div class="bg-orb orb-amber"></div>
+  <div class="bg-orb orb-indigo"></div>
+
+  <div class="start-day-container">
+    <!-- CABECERA DEL SISTEMA -->
+    <header class="start-header">
+      <div class="brand-badge">
+        <div class="logo-box">🍔</div>
+        <div>
+          <h1>Artisan <span>POS</span></h1>
+          <p>Control de Acceso & Inicio de Jornada Operativa</p>
+        </div>
+      </div>
+
+      <div class="system-status">
+        <span class="status-dot"></span>
+        <span>Terminal Lista • {{ currentDate | date:'EEEE, d MMM yyyy' }}</span>
+      </div>
+    </header>
+
+    <!-- TÍTULO CENTRAL -->
+    <div class="hero-intro">
+      <span class="pill-tag">☀️ INICIAR EL DÍA</span>
+      <h2>Selecciona tu Perfil de Operador</h2>
+      <p>Elige tu tarjeta de operador para abrir turno de caja o administrar el catálogo, mesas y personal del restaurante.</p>
+    </div>
+
+    <!-- REGLA 5: BARRA DE BYPASS DE PERMISOS PARA PRUEBAS Y VALIDACIONES ÁGILES -->
+    <div class="bypass-quick-bar">
+      <div class="bypass-info">
+        <span class="bypass-badge">⚡ MODO PRUEBAS (BYPASS DE PERMISOS)</span>
+        <p>Salta directamente a los flujos específicos sin validación de credenciales para agilizar tus pruebas:</p>
+      </div>
+      <div class="bypass-buttons">
+        <button type="button" class="btn-bypass-jump admin" (click)="quickBypassJump('/admin/tables')">
+          🍽️ Gestión de Mesas (Admin)
+        </button>
+        <button type="button" class="btn-bypass-jump catalog" (click)="quickBypassJump('/admin/catalog')">
+          🏷️ Catálogo & Productos
+        </button>
+        <button type="button" class="btn-bypass-jump pos" (click)="quickBypassJump('/pos/terminal')">
+          🛒 Terminal Cajero (Mesas & Domicilios)
+        </button>
+      </div>
+    </div>
+
+    <!-- SKELETON LOADING -->
+    <div class="operators-grid" *ngIf="isLoadingOperators">
+      <div class="operator-skeleton" *ngFor="let i of [1, 2, 3]"></div>
+    </div>
+
+    <!-- GRID DE TARJETAS DE OPERADOR -->
+    <div class="operators-grid" *ngIf="!isLoadingOperators && operators.length > 0">
+      <div
+        class="operator-card"
+        *ngFor="let op of operators"
+        [class.admin-card]="op.rol === 'admin'"
+        [class.cashier-card]="op.rol !== 'admin'"
+        (click)="selectOperator(op)">
+
+        <div class="card-role-ribbon">
+          <span class="role-badge" [ngClass]="op.rol === 'admin' ? 'badge-admin' : 'badge-cashier'">
+            {{ op.rol === 'admin' ? '👑 Administrador' : '💼 Cajero Operativo' }}
+          </span>
+        </div>
+
+        <div class="operator-avatar" [ngClass]="op.rol === 'admin' ? 'avatar-admin' : 'avatar-cashier'">
+          {{ op.rol === 'admin' ? '🛡️' : '🧑‍💼' }}
+        </div>
+
+        <div class="operator-info">
+          <h3>{{ op.nombre }}</h3>
+          <span class="operator-username">@{{ op.username }}</span>
+          <p class="operator-perms">
+            {{ op.rol === 'admin'
+              ? 'Gestión de Productos, Categorías, Cajeros y Reportes'
+              : 'Apertura de Turno, Punto de Venta, Órdenes y Cobros' }}
+          </p>
+        </div>
+
+        <div class="card-footer-cta">
+          <span>Iniciar con este operador</span>
+          <span class="arrow">→</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL PASO 1: INGRESO DE CLAVE / PIN DE OPERADOR -->
+    <div class="modal-backdrop" *ngIf="selectedOperator && !showOpenShiftModal" (click)="closeOperatorModal()">
+      <div class="modal-card" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div class="operator-mini-badge">
+            <span class="mini-icon">{{ selectedOperator.rol === 'admin' ? '🛡️' : '🧑‍💼' }}</span>
+            <div>
+              <h3>{{ selectedOperator.nombre }}</h3>
+              <span class="mini-role">{{ selectedOperator.rol === 'admin' ? 'Rol: Administrador' : 'Rol: Cajero' }}</span>
+            </div>
+          </div>
+          <button type="button" class="btn-close" (click)="closeOperatorModal()">✕</button>
+        </div>
+
+        <form [formGroup]="loginForm" (ngSubmit)="onAuthenticate()">
+          <div class="modal-body">
+            <div class="form-group">
+              <label for="op-pass">Clave de Acceso / PIN de Operador</label>
+              <input
+                id="op-pass"
+                type="password"
+                formControlName="password"
+                placeholder="Ingresa tu clave..."
+                autofocus />
+            </div>
+
+            <!-- Botón de autocompletado rápido para pruebas -->
+            <div class="demo-helper">
+              <span>🔑 Acceso rápido de prueba:</span>
+              <button type="button" class="btn-demo-fill" (click)="fillDemoPassword()">
+                Autocompletar ({{ selectedOperator.rol === 'admin' ? 'admin123' : 'cajero123' }})
+              </button>
+            </div>
+
+            <div class="error-banner" *ngIf="authError">
+              <span>⚠️</span> {{ authError }}
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn-secondary" (click)="closeOperatorModal()">Cambiar Operador</button>
+            <button type="submit" class="btn-primary" [disabled]="isAuthenticating">
+              {{ isAuthenticating ? 'Verificando...' : (selectedOperator.rol === 'admin' ? 'Entrar al Panel Admin' : 'Continuar a Caja') }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODAL PASO 2: APERTURA DE TURNO ("INICIAR EL DÍA") PARA CAJEROS -->
+    <div class="modal-backdrop" *ngIf="showOpenShiftModal">
+      <div class="modal-card shift-modal">
+        <div class="shift-banner">
+          <span class="shift-icon">🌅</span>
+          <div>
+            <h3>Apertura de Turno Operativo</h3>
+            <p>Declara el efectivo base en caja para iniciar las ventas del día</p>
+          </div>
+        </div>
+
+        <form [formGroup]="shiftForm" (ngSubmit)="onOpenShift()">
+          <div class="modal-body">
+            <div class="cashier-welcome">
+              Operador responsable: <strong>{{ selectedOperator?.nombre }}</strong>
+            </div>
+
+            <div class="form-group">
+              <label for="monto-inicial">Fondo Inicial de Caja ($ Efectivo) *</label>
+              <input
+                id="monto-inicial"
+                type="number"
+                min="0"
+                step="1000"
+                formControlName="monto_inicial" />
+            </div>
+
+            <div class="presets-group">
+              <span class="presets-label">Montos frecuentes:</span>
+              <div class="preset-pills">
+                <button
+                  type="button"
+                  class="preset-btn"
+                  *ngFor="let amount of cashPresets"
+                  [class.active]="shiftForm.get('monto_inicial')?.value === amount"
+                  (click)="setCashPreset(amount)">
+                  ${{ amount | number:'1.0-0' }}
+                </button>
+              </div>
+            </div>
+
+            <div class="error-banner" *ngIf="shiftError">
+              <span>⚠️</span> {{ shiftError }}
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn-secondary" (click)="cancelShiftOpen()">Cancelar</button>
+            <button type="submit" class="btn-success" [disabled]="isOpeningShift">
+              {{ isOpeningShift ? 'Abriendo Caja...' : '🚀 Abrir Caja e Iniciar Día' }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+  </div>
+</div>

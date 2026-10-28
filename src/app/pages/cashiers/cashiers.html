@@ -1,0 +1,162 @@
+<div class="pos-container">
+  <!-- BARRA SUPERIOR DE ADMINISTRACIÓN -->
+  <header class="pos-header">
+    <div class="brand-section">
+      <div class="brand-icon">🍔</div>
+      <div class="brand-info">
+        <h1>Artisan <span>Admin</span></h1>
+        <p>Panel de Control & Gestión de Cajeros</p>
+      </div>
+    </div>
+
+    <!-- NAVEGACIÓN DE SECCIONES ADMIN -->
+    <nav class="admin-nav">
+      <a routerLink="/admin/catalog" routerLinkActive="active" class="nav-tab">
+        <span>🏷️</span> Catálogo
+      </a>
+      <a routerLink="/admin/tables" routerLinkActive="active" class="nav-tab">
+        <span>🍽️</span> Mesas
+      </a>
+      <a routerLink="/admin/cashiers" routerLinkActive="active" class="nav-tab">
+        <span>🧑‍💼</span> Cajeros
+      </a>
+      <a routerLink="/admin/dashboard" routerLinkActive="active" class="nav-tab">
+        <span>📊</span> Resumen & Cierres
+      </a>
+      <a routerLink="/pos/terminal" class="nav-tab">
+        <span>🛒</span> Ir a Caja POS
+      </a>
+    </nav>
+
+    <!-- PERFIL ACTIVO Y SALIDA -->
+    <div class="user-bar">
+      <button type="button" class="btn-logout" (click)="authService.toggleBypassPermissions()">
+        {{ authService.bypassPermissionsSignal() ? '🔓 Bypass: ON' : '🔒 Bypass: OFF' }}
+      </button>
+      <div class="user-pill">
+        <span class="role-dot">👑</span>
+        <span>{{ authService.currentUserSignal()?.nombre }}</span>
+      </div>
+      <button type="button" class="btn-logout" (click)="logout()">
+        🚪 Cambiar Operador
+      </button>
+    </div>
+  </header>
+
+  <!-- CONTENIDO DE GESTIÓN DE CAJEROS -->
+  <section class="cashiers-section">
+    <div class="section-header">
+      <div>
+        <h2>Personal Operativo & Cajeros</h2>
+        <p>Administra las cuentas de cajeros autorizados para abrir turnos de caja y operar ventas ({{ activeCashiersCount }} cajeros activos).</p>
+      </div>
+
+      <button type="button" class="btn-primary" (click)="openCreateModal()">
+        <span>＋</span> Nuevo Cajero
+      </button>
+    </div>
+
+    <!-- GRID DE TARJETAS DE USUARIOS / CAJEROS -->
+    <div class="cashiers-grid" *ngIf="!isLoading">
+      <div
+        class="cashier-card"
+        *ngFor="let u of users"
+        [class.inactive]="!u.activo">
+
+        <div class="card-top">
+          <span class="role-tag" [ngClass]="u.rol === 'admin' ? 'tag-admin' : 'tag-cashier'">
+            {{ u.rol === 'admin' ? '👑 Administrador' : '💼 Cajero' }}
+          </span>
+
+          <span class="status-badge" [ngClass]="u.activo ? 'status-active' : 'status-inactive'">
+            {{ u.activo ? '● Activo' : '○ Inactivo' }}
+          </span>
+        </div>
+
+        <div class="card-center">
+          <div class="avatar">{{ u.rol === 'admin' ? '🛡️' : '🧑‍💼' }}</div>
+          <div>
+            <h3>{{ u.nombre }}</h3>
+            <span class="username">@{{ u.username }}</span>
+          </div>
+        </div>
+
+        <div class="card-perms">
+          <span *ngIf="u.rol === 'admin'">Control total: Catálogo, Precios, Stock y Personal</span>
+          <span *ngIf="u.rol !== 'admin'">Acceso restringido: Solo apertura de turno, órdenes y cobros</span>
+        </div>
+
+        <div class="card-actions">
+          <button type="button" class="btn-edit" (click)="openEditModal(u)">
+            ✏️ Editar / Clave
+          </button>
+          <button
+            *ngIf="u.id !== 1"
+            type="button"
+            class="btn-toggle"
+            [ngClass]="u.activo ? 'deactivate' : 'activate'"
+            (click)="toggleUserActive(u)">
+            {{ u.activo ? '⏸️ Desactivar' : '▶️ Activar' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL DE CREAR / EDITAR CAJERO -->
+    <div class="modal-backdrop" *ngIf="showUserModal" (click)="closeModal()">
+      <div class="modal-card" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <h3>{{ editingUser ? '✏️ Editar Operador' : '🧑‍💼 Registrar Nuevo Cajero' }}</h3>
+          <button type="button" class="btn-close" (click)="closeModal()">✕</button>
+        </div>
+
+        <form [formGroup]="userForm" (ngSubmit)="saveUser()">
+          <div class="modal-body">
+            <div class="form-group">
+              <label>Nombre Completo *</label>
+              <input type="text" formControlName="nombre" placeholder="Ej: Laura Gómez" />
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label>Usuario (Username) *</label>
+                <input type="text" formControlName="username" placeholder="Ej: cajero2" />
+              </div>
+
+              <div class="form-group">
+                <label>Rol en el Sistema *</label>
+                <select formControlName="rol" [attr.disabled]="editingUser?.id === 1 ? true : null">
+                  <option value="cajero">💼 Cajero (Solo Caja y Ventas)</option>
+                  <option value="admin">👑 Administrador (Control Total)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>
+                {{ editingUser ? 'Nueva Contraseña / PIN (dejar en blanco para mantener actual)' : 'Contraseña / PIN de Acceso (mín. 4 caracteres) *' }}
+              </label>
+              <input
+                type="password"
+                formControlName="password"
+                placeholder="••••••" />
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" class="btn-secondary" (click)="closeModal()">Cancelar</button>
+            <button type="submit" class="btn-primary" [disabled]="isSubmitting">
+              {{ isSubmitting ? 'Guardando...' : (editingUser ? 'Guardar Cambios' : 'Crear Cajero') }}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- TOAST -->
+    <div class="toast-notification" *ngIf="toast" [ngClass]="toast.type">
+      <span>{{ toast.type === 'success' ? '✅' : '❌' }}</span>
+      <span>{{ toast.message }}</span>
+    </div>
+  </section>
+</div>

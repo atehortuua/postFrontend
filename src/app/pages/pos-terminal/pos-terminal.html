@@ -1,0 +1,427 @@
+<div class="terminal-wrapper">
+  <!-- HEADER DE CAJA OPERATIVA -->
+  <header class="terminal-header">
+    <div class="brand-group">
+      <div class="logo">🍔</div>
+      <div>
+        <h1>Artisan <span>Caja POS</span></h1>
+        <p>Terminal de Ventas, Asignación de Mesas & Domicilios</p>
+      </div>
+    </div>
+
+    <div class="shift-status-bar" *ngIf="activeShift">
+      <div class="shift-chip">
+        <span class="dot"></span>
+        <span>Turno #{{ activeShift.id }} Abierto</span>
+      </div>
+      <div class="shift-metric">
+        <span>Base:</span>
+        <strong>${{ activeShift.monto_inicial | number:'1.0-0' }}</strong>
+      </div>
+      <div class="shift-metric">
+        <span>Efectivo Gaveta:</span>
+        <strong>${{ expectedDrawerCash | number:'1.0-0' }}</strong>
+      </div>
+    </div>
+
+    <div class="cashier-actions">
+      <!-- Regla 5: Botón de Bypass de Permisos y salto rápido a Admin para pruebas -->
+      <button
+        type="button"
+        class="btn-bypass"
+        [class.bypass-on]="authService.bypassPermissionsSignal()"
+        (click)="toggleBypass()">
+        {{ authService.bypassPermissionsSignal() ? '🔓 Bypass: ON' : '🔒 Bypass: OFF' }}
+      </button>
+
+      <a
+        *ngIf="authService.bypassPermissionsSignal() || authService.isAdmin()"
+        routerLink="/admin/tables"
+        class="btn-admin-jump">
+        🍽️ Gestionar Mesas (Admin)
+      </a>
+
+      <button type="button" class="btn-outline" (click)="showMovementModal = true" *ngIf="activeShift">
+        💸 Movimiento Caja
+      </button>
+
+      <button type="button" class="btn-warning" (click)="openCloseShiftModal()" *ngIf="activeShift">
+        🔒 Cierre Z
+      </button>
+
+      <button type="button" class="btn-logout" (click)="logout()">
+        🚪 Salir
+      </button>
+    </div>
+  </header>
+
+  <!-- BARRA RÁPIDA DE MESAS ABIERTAS EN SALÓN (REGLA 4) -->
+  <div class="active-tables-banner" *ngIf="openTables.length > 0">
+    <div class="banner-label">
+      <span class="pulse-dot"></span>
+      <strong>Mesas en estado ABIERTA ({{ openTables.length }}):</strong>
+    </div>
+    <div class="open-tables-chips">
+      <div class="open-table-chip" *ngFor="let tbl of openTables">
+        <span>🍽️ Mesa <strong>{{ tbl.numero }}</strong> (ABIERTA)</span>
+        <button type="button" (click)="closeActiveTable(tbl)" title="Cobrar/Liberar y pasar a CERRADA">
+          Pasar a CERRADA ✕
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTENIDO DE 2 COLUMNAS: CATÁLOGO + COMANDA CON ASIGNACIÓN DE MESA / DOMICILIO -->
+  <div class="terminal-grid">
+    <!-- COLUMNA IZQUIERDA: CATEGORÍAS Y PRODUCTOS -->
+    <div class="catalog-column">
+      <div class="categories-strip">
+        <div
+          class="cat-card"
+          [class.active]="selectedCategoryId === null"
+          (click)="selectCategory(null)">
+          <span class="cat-icon">🍽️</span>
+          <div class="cat-text">
+            <h4>Todas</h4>
+            <span>{{ products.length }} items</span>
+          </div>
+        </div>
+
+        <div
+          class="cat-card"
+          *ngFor="let cat of categories"
+          [class.active]="selectedCategoryId === cat.id"
+          (click)="selectCategory(cat.id ?? null)">
+          <span class="cat-icon">{{ cat.icono || '🏷️' }}</span>
+          <div class="cat-text">
+            <h4>{{ cat.nombre }}</h4>
+            <span>{{ getProductCountForCategory(cat.id ?? 0) }} items</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="catalog-toolbar">
+        <div class="search-input-wrap">
+          <span>🔍</span>
+          <input
+            type="text"
+            [(ngModel)]="searchTerm"
+            placeholder="Buscar producto para agregar a la orden..." />
+        </div>
+        <span class="readonly-notice">🔒 Catálogo de Solo Lectura en Caja</span>
+      </div>
+
+      <div class="pos-products-grid">
+        <div
+          class="pos-product-card"
+          *ngFor="let prod of filteredProducts"
+          [class.out-of-stock]="prod.control_stock && prod.stock_actual <= 0"
+          (click)="addToCart(prod)">
+
+          <div class="card-top">
+            <span class="cat-tag">{{ prod.categoria_nombre || 'Menú' }}</span>
+            <span
+              class="stock-pill"
+              *ngIf="prod.control_stock"
+              [ngClass]="{
+                'ok': prod.stock_actual > 5,
+                'low': prod.stock_actual > 0 && prod.stock_actual <= 5,
+                'out': prod.stock_actual <= 0
+              }">
+              {{ prod.stock_actual <= 0 ? 'Agotado' : prod.stock_actual + ' disp.' }}
+            </span>
+          </div>
+
+          <h3>{{ prod.nombre }}</h3>
+          <p>{{ prod.descripcion || 'Producto artesanal' }}</p>
+
+          <div class="card-bottom">
+            <span class="price">${{ prod.precio_venta | number:'1.0-0' }}</span>
+            <span class="add-btn">＋ Agregar</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- COLUMNA DERECHA: COMANDA, ASIGNACIÓN DE MESA Y EXCEPCIÓN DE DOMICILIO -->
+    <aside class="order-sidebar">
+      <div class="order-header">
+        <h2>🧾 Nueva Orden</h2>
+        <button *ngIf="cart.length > 0" type="button" class="btn-clear" (click)="clearCart()">
+          Vaciar
+        </button>
+      </div>
+
+      <!-- SELECTOR DE MODALIDAD: EN MESA vs DOMICILIO vs PARA LLEVAR -->
+      <div class="order-type-selector">
+        <button
+          type="button"
+          [class.active]="orderType === 'mesa'"
+          (click)="setOrderType('mesa')">
+          🍽️ En Mesa
+        </button>
+        <button
+          type="button"
+          [class.active]="orderType === 'delivery'"
+          (click)="setOrderType('delivery')">
+          🛵 Domicilio
+        </button>
+        <button
+          type="button"
+          [class.active]="orderType === 'para_llevar'"
+          (click)="setOrderType('para_llevar')">
+          🛍️ Llevar
+        </button>
+      </div>
+
+      <!-- REGLA 2 Y 4: SELECTOR DE MESA (SOLO CUANDO ES 'EN MESA') -->
+      <div class="table-assignment-box" *ngIf="orderType === 'mesa'">
+        <div class="box-title-row">
+          <label>🪑 Asignar Mesa a la Orden *</label>
+          <a routerLink="/admin/tables" class="link-new-table">＋ Crear mesa</a>
+        </div>
+
+        <div class="tables-mini-grid" *ngIf="tables.length > 0; else noTablesYet">
+          <button
+            type="button"
+            class="table-chip-btn"
+            *ngFor="let tbl of tables"
+            [class.selected]="selectedTableId === tbl.id"
+            [class.is-abierta]="tbl.estado === 'abierta'"
+            [class.is-cerrada]="tbl.estado === 'cerrada'"
+            (click)="selectTableForOrder(tbl)">
+            <span class="t-num">{{ tbl.numero }}</span>
+            <span class="t-state">{{ tbl.estado | uppercase }}</span>
+          </button>
+        </div>
+
+        <ng-template #noTablesYet>
+          <div class="no-tables-alert">
+            No hay mesas creadas. <a routerLink="/admin/tables">Crea una mesa aquí</a>.
+          </div>
+        </ng-template>
+      </div>
+
+      <!-- REGLA 3: EXCEPCIÓN ESTRICTA PARA DOMICILIOS (SIN MESA) -->
+      <div class="delivery-exception-box" *ngIf="orderType === 'delivery'">
+        <div class="exception-badge">
+          <span>🛵</span>
+          <div>
+            <strong>Pedido a Domicilio (Mesa Omitida)</strong>
+            <p>Por regla de negocio, los domicilios no asignan ni bloquean ninguna mesa.</p>
+          </div>
+        </div>
+        <input
+          type="text"
+          [(ngModel)]="deliveryAddress"
+          placeholder="Dirección o teléfono de entrega (opcional)..." />
+      </div>
+
+      <!-- AVISO PARA LLEVAR -->
+      <div class="delivery-exception-box takeaway" *ngIf="orderType === 'para_llevar'">
+        <div class="exception-badge">
+          <span>🛍️</span>
+          <div>
+            <strong>Pedido Para Llevar en Mostrador</strong>
+            <p>No requiere selección de mesa.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- LISTA DE PRODUCTOS EN LA ORDEN -->
+      <div class="cart-items" *ngIf="cart.length > 0; else emptyCart">
+        <div class="cart-row" *ngFor="let item of cart">
+          <div class="item-info">
+            <h4>{{ item.product.nombre }}</h4>
+            <span>${{ item.product.precio_venta | number:'1.0-0' }} c/u</span>
+          </div>
+
+          <div class="qty-controls">
+            <button type="button" (click)="updateQuantity(item, -1)">−</button>
+            <span>{{ item.quantity }}</span>
+            <button type="button" (click)="updateQuantity(item, 1)">+</button>
+          </div>
+
+          <div class="item-subtotal">
+            ${{ (item.product.precio_venta * item.quantity) | number:'1.0-0' }}
+          </div>
+        </div>
+      </div>
+
+      <ng-template #emptyCart>
+        <div class="empty-cart-box">
+          <div class="empty-icon">🛒</div>
+          <p>Selecciona productos del catálogo para armar la orden.</p>
+        </div>
+      </ng-template>
+
+      <!-- SECCIÓN DE PAGO Y ACCIONES DE ORDEN -->
+      <div class="checkout-panel" *ngIf="cart.length > 0">
+        <div class="payment-methods">
+          <button
+            type="button"
+            [class.active]="paymentMethod === 'efectivo'"
+            (click)="paymentMethod = 'efectivo'">
+            💵 Efectivo
+          </button>
+          <button
+            type="button"
+            [class.active]="paymentMethod === 'tarjeta_debito'"
+            (click)="paymentMethod = 'tarjeta_debito'">
+            💳 Tarjeta
+          </button>
+          <button
+            type="button"
+            [class.active]="paymentMethod === 'transferencia'"
+            (click)="paymentMethod = 'transferencia'">
+            📲 Transf.
+          </button>
+        </div>
+
+        <div class="cash-calculator" *ngIf="paymentMethod === 'efectivo'">
+          <div class="calc-row">
+            <label>Efectivo Recibido ($):</label>
+            <input type="number" [(ngModel)]="cashReceived" min="0" step="1000" />
+          </div>
+          <div class="calc-row change">
+            <span>Cambio / Vuelto:</span>
+            <strong>${{ changeDue | number:'1.0-0' }}</strong>
+          </div>
+        </div>
+
+        <div class="total-bar">
+          <span>Total de la Orden</span>
+          <span class="total-amount">${{ cartTotal | number:'1.0-0' }}</span>
+        </div>
+
+        <div class="order-action-buttons">
+          <!-- Si es en mesa, permite dejar la mesa en estado ABIERTA con la orden activa -->
+          <button
+            *ngIf="orderType === 'mesa'"
+            type="button"
+            class="btn-open-table-order"
+            [disabled]="isProcessingSale"
+            (click)="processOrderAndState(true)">
+            🍽️ Enviar a Mesa (Cambiar a ABIERTA)
+          </button>
+
+          <!-- Cobrar inmediatamente -->
+          <button
+            type="button"
+            class="btn-pay"
+            [disabled]="isProcessingSale"
+            (click)="processOrderAndState(false)">
+            {{ isProcessingSale
+              ? 'Procesando...'
+              : (orderType === 'mesa' ? '✅ Cobrar y Dejar Mesa CERRADA' : '✅ Cobrar Orden Ahora') }}
+          </button>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- MODAL: MOVIMIENTO DE CAJA -->
+  <div class="modal-backdrop" *ngIf="showMovementModal" (click)="showMovementModal = false">
+    <div class="modal-card" (click)="$event.stopPropagation()">
+      <h3>💸 Registrar Movimiento de Caja</h3>
+      <div class="form-group">
+        <label>Tipo de Movimiento</label>
+        <select [(ngModel)]="movementType">
+          <option value="salida">📤 Salida de Efectivo (Gasto / Insumos)</option>
+          <option value="entrada">📥 Entrada de Efectivo (Ingreso Caja Chica)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Motivo / Descripción *</label>
+        <input type="text" [(ngModel)]="movementReason" placeholder="Ej: Compra de hielo o empaques" />
+      </div>
+      <div class="form-group">
+        <label>Monto ($) *</label>
+        <input type="number" [(ngModel)]="movementAmount" min="1" step="1000" />
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-sec" (click)="showMovementModal = false">Cancelar</button>
+        <button type="button" class="btn-pri" (click)="submitMovement()">Guardar Movimiento</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL PASO 5: CIERRE DE TURNO CON ARQUEO DETALLADO (CIERRE Z) -->
+  <div class="modal-backdrop" *ngIf="showCloseShiftModal" (click)="showCloseShiftModal = false">
+    <div class="modal-card" (click)="$event.stopPropagation()">
+      <h3>🔒 Arqueo y Cierre de Turno (Cierre Z)</h3>
+      <p class="modal-sub">Resumen financiero del turno antes de cerrar la caja.</p>
+
+      <div class="arqueo-summary" *ngIf="activeShift">
+        <div class="arqueo-row">
+          <span>Fondo Inicial:</span>
+          <strong>+${{ activeShift.monto_inicial | number:'1.0-0' }}</strong>
+        </div>
+        <div class="arqueo-row">
+          <span>Ventas en Efectivo:</span>
+          <strong>+${{ activeShift.total_ventas_efectivo | number:'1.0-0' }}</strong>
+        </div>
+        <div class="arqueo-row" *ngIf="cashInTotal > 0">
+          <span>Entradas de Efectivo:</span>
+          <strong class="pos">+${{ cashInTotal | number:'1.0-0' }}</strong>
+        </div>
+        <div class="arqueo-row" *ngIf="cashOutTotal > 0">
+          <span>Salidas de Efectivo:</span>
+          <strong class="neg">−${{ cashOutTotal | number:'1.0-0' }}</strong>
+        </div>
+        <div class="arqueo-row total-expected">
+          <span>Efectivo Esperado en Gaveta:</span>
+          <strong>${{ expectedDrawerCash | number:'1.0-0' }}</strong>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Dinero Físico Real Contado ($)</label>
+        <input type="number" [(ngModel)]="countedCash" min="0" step="1000" />
+        <span
+          class="diff-indicator"
+          [ngClass]="{
+            'exact': cashDifference === 0,
+            'surplus': cashDifference > 0,
+            'shortage': cashDifference < 0
+          }">
+          {{ cashDifference === 0
+            ? '✓ Cuadre Exacto ($0 diferencia)'
+            : (cashDifference > 0 ? 'Sobrante: +$' + (cashDifference | number:'1.0-0') : 'Faltante: $' + (cashDifference | number:'1.0-0')) }}
+        </span>
+      </div>
+
+      <div class="form-group">
+        <label>Fondo reservado para mañana ($)</label>
+        <input type="number" [(ngModel)]="nextDayFund" min="0" step="1000" />
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn-sec" (click)="showCloseShiftModal = false">Cancelar</button>
+        <button type="button" class="btn-danger" (click)="confirmCloseShift()">Confirmar Cierre Z</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: APERTURA DE TURNO -->
+  <div class="modal-backdrop" *ngIf="showOpenShiftPrompt">
+    <div class="modal-card">
+      <h3>🌅 Iniciar Turno de Caja</h3>
+      <p class="modal-sub">Declara la base inicial de efectivo para comenzar a operar.</p>
+      <div class="form-group">
+        <label>Monto Inicial en Caja ($)</label>
+        <input type="number" [(ngModel)]="initialCashAmount" min="0" step="1000" />
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-sec" (click)="showOpenShiftPrompt = false">Omitir (Modo Pruebas)</button>
+        <button type="button" class="btn-pri" (click)="openShiftNow()">Abrir Caja Ahora</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST -->
+  <div class="toast-notification" *ngIf="toast" [ngClass]="toast.type">
+    <span>{{ toast.type === 'success' ? '✅' : (toast.type === 'error' ? '❌' : 'ℹ️') }}</span>
+    <span>{{ toast.message }}</span>
+  </div>
+</div>

@@ -3,17 +3,36 @@
      ========================================================================== -->
 <div class="pos-container">
   
-  <!-- BARRA SUPERIOR / HEADER PROFESIONAL POS -->
+  <!-- BARRA SUPERIOR / HEADER PROFESIONAL POS (EXCLUSIVO ADMIN) -->
   <header class="pos-header">
     <div class="brand-section">
       <div class="brand-icon">🍔</div>
       <div class="brand-info">
-        <h1>Artisan <span>POS</span></h1>
-        <p>Gestión Inteligente de Menú & Inventario</p>
+        <h1>Artisan <span>Admin</span></h1>
+        <p>Panel de Administración • Catálogo & Inventario</p>
       </div>
     </div>
 
-    <!-- MÉTRICAS EN TIEMPO REAL -->
+    <!-- NAVEGACIÓN DE SECCIONES ADMIN -->
+    <nav class="admin-nav">
+      <a routerLink="/admin/catalog" routerLinkActive="active" class="nav-tab">
+        <span>🏷️</span> Catálogo
+      </a>
+      <a routerLink="/admin/tables" routerLinkActive="active" class="nav-tab">
+        <span>🍽️</span> Mesas
+      </a>
+      <a routerLink="/admin/cashiers" routerLinkActive="active" class="nav-tab">
+        <span>🧑‍💼</span> Cajeros
+      </a>
+      <a routerLink="/admin/dashboard" routerLinkActive="active" class="nav-tab">
+        <span>📊</span> Resumen & Cierres
+      </a>
+      <a routerLink="/pos/terminal" class="nav-tab">
+        <span>🛒</span> Ir a Caja POS
+      </a>
+    </nav>
+
+    <!-- MÉTRICAS EN TIEMPO REAL Y PERFIL -->
     <div class="metrics-bar">
       <div class="metric-chip">
         <span class="metric-icon">🏷️</span>
@@ -39,8 +58,20 @@
         </div>
       </div>
 
+      <button
+        type="button"
+        class="btn-logout-header"
+        (click)="authService.toggleBypassPermissions()"
+        title="Saltarse permisos temporalmente para pruebas">
+        {{ authService.bypassPermissionsSignal() ? '🔓 Bypass: ON' : '🔒 Bypass: OFF' }}
+      </button>
+
       <button type="button" class="btn-refresh" (click)="loadAllData()" title="Sincronizar con el Backend">
-        <span class="refresh-icon">🔄</span> Sincronizar
+        <span class="refresh-icon">🔄</span>
+      </button>
+
+      <button type="button" class="btn-logout-header" (click)="logout()">
+        🚪 Cambiar Operador
       </button>
     </div>
   </header>
